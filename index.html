@@ -257,7 +257,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="primary-btn" onclick="saveSettings()">저장하고 연결 확인</button>
       <button class="ghost-btn" onclick="closeModal('modal-settings')">닫기</button>
       <div class="field-hint" style="text-align:center;margin-top:10px;opacity:.75">
-        화면(HTML) 버전 <b id="ver-html">M5.9</b> ·
+        화면(HTML) 버전 <b id="ver-html">M5.9.4</b> ·
         서버(Code.gs) 버전 <b id="ver-server">확인 중…</b>
       </div>
     </div>
@@ -280,6 +280,13 @@ textarea{resize:vertical;min-height:88px}
       </div>
       <button class="primary-btn" onclick="saveStudent()">저장</button>
       <button class="ghost-btn" onclick="closeModal('modal-student')">취소</button>
+      <button class="danger-btn hidden" id="sf-delete" onclick="deleteStudent()">🗑 학생 완전 삭제</button>
+      <div class="field-hint hidden" id="sf-delete-hint">
+        완전 삭제는 학생 정보뿐 아니라 <b>수업일지 · 독해 첨삭 · 문법 점수 · 월간 레포트 기록과
+        Drive에 저장된 숙제 사진 · 성적표 스크린샷까지 전부</b> 지웁니다.
+        학부모 링크도 즉시 끊깁니다.<br>
+        기록을 남기고 목록에서만 감추려면 위 [재원 여부]를 <b>퇴원(숨김)</b>으로 바꿔 저장하세요.
+      </div>
     </div>
   </div>
 
@@ -707,7 +714,7 @@ async function loadList(){
     var m = thisMonth();
     document.getElementById('month-label').textContent = m.replace('-','년 ') + '월 입력 현황';
     var r = await Promise.all([ call('listStudents'), call('monthCounts', { month: m }) ]);
-    students = r[0].filter(function(s){ return String(s.active) !== 'FALSE'; });
+    students = r[0].filter(function(s){ return String(s.active).toUpperCase() !== 'FALSE'; });
     counts = r[1];
     renderList();
     document.getElementById('toast').style.display='none';
@@ -749,7 +756,10 @@ function openStudentForm(s){
   document.getElementById('sf-start').value = s ? s.start_date : today();
   document.getElementById('sf-memo').value = s ? s.memo : '';
   document.getElementById('sf-active-wrap').style.display = s ? 'block' : 'none';
-  if (s) document.getElementById('sf-active').value = String(s.active) === 'FALSE' ? 'FALSE' : 'TRUE';
+  if (s) document.getElementById('sf-active').value = String(s.active).toUpperCase() === 'FALSE' ? 'FALSE' : 'TRUE';
+  // M5.9.3: 삭제 버튼은 기존 학생을 수정할 때만 노출
+  document.getElementById('sf-delete').classList.toggle('hidden', !s);
+  document.getElementById('sf-delete-hint').classList.toggle('hidden', !s);
   openModal('modal-student');
 }
 async function saveStudent(){
@@ -768,6 +778,41 @@ async function saveStudent(){
   busy('저장 중');
   try { await call('saveStudent', data); toast('저장되었습니다'); closeModal('modal-student'); loadList(); }
   catch(e){ toast('오류: ' + e.message, 3500); }
+}
+
+/* ---- 학생 완전 삭제 (M5.9.3 / 2단계 확인) ---- */
+async function deleteStudent(){
+  var id = document.getElementById('sf-id').value;
+  if (!id) return;
+  var s = students.find(function(x){ return x.student_id === id; });
+  var nm = s ? String(s.name) : (currentStudent ? String(currentStudent.name) : '');
+
+  if (!confirm('[' + nm + '] 학생을 완전히 삭제합니다.\n\n'
+    + '함께 삭제되는 기록:\n'
+    + '· 수업일지\n'
+    + '· 독해 첨삭\n'
+    + '· 문법 점수\n'
+    + '· 월간 레포트\n'
+    + '· Drive의 숙제 사진 · 성적표 스크린샷 (휴지통으로 이동)\n\n'
+    + '학부모 링크도 즉시 무효가 됩니다.\n\n계속할까요?')) return;
+
+  var typed = prompt('확인을 위해 학생 이름을 그대로 입력하세요.\n\n이름: ' + nm);
+  if (typed === null) return;
+  if (String(typed).trim() !== nm) { toast('이름이 일치하지 않아 취소했습니다', 3000); return; }
+
+  busy('삭제 중');
+  try {
+    var r = await call('deleteStudent', { student_id: id, purge: true });
+    closeModal('modal-student');
+    var msg = nm + ' 학생을 삭제했습니다';
+    if (r && r.removed) {
+      msg += ' (일지 ' + r.removed.sessions + ' · 첨삭 ' + r.removed.reading_feedback
+        + ' · 문법 ' + r.removed.grammar_scores + ' · 레포트 ' + r.removed.monthly_reports
+        + '건, 사진 ' + (r.removed.photos || 0) + '장 함께 삭제)';
+    }
+    toast(msg, 4000);
+    showList();
+  } catch(e){ toast('오류: ' + e.message, 3500); }
 }
 
 /* ================= 학생 상세 ================= */
