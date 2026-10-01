@@ -70,6 +70,11 @@ textarea{resize:vertical;min-height:88px}
   border-bottom:2px solid transparent}
 .tab.on{color:var(--gold-bright);border-bottom-color:var(--gold)}
 .tab-body{padding:16px}
+@media (max-width:430px){.tab{font-size:12.5px}}
+.exam-actions{display:flex;gap:8px;margin-top:10px}
+.exam-actions a,.exam-actions button{flex:1;text-align:center;padding:9px 0;border-radius:10px;
+  font-size:13px;border:1px solid var(--line);color:var(--muted)}
+.exam-actions a.open{border-color:var(--gold);color:var(--gold-bright)}
 
 /* ---------- 일지 카드 ---------- */
 .log-card{background:var(--card);border:1px solid var(--line);
@@ -213,6 +218,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="tab" data-tab="reading" onclick="switchTab('reading')">독해 첨삭</button>
       <button class="tab" data-tab="grammar" onclick="switchTab('grammar')">문법</button>
       <button class="tab" data-tab="report" onclick="switchTab('report')">월간 레포트</button>
+      <button class="tab" data-tab="exam" onclick="switchTab('exam')">시험분석</button>
     </div>
     <div class="tab-body">
       <div id="tab-log">
@@ -239,6 +245,13 @@ textarea{resize:vertical;min-height:88px}
         <div style="height:16px"></div>
         <div id="rp-list"></div>
       </div>
+      <div id="tab-exam" class="hidden">
+        <button class="primary-btn" onclick="openExamForm()">＋ 시험 분석 PDF 올리기</button>
+        <div class="field-hint" style="margin-top:8px">중간·기말고사 분석 리포트(PDF)를 보관하는 강사 전용 칸입니다.
+        학부모 페이지에는 노출되지 않습니다.</div>
+        <div style="height:16px"></div>
+        <div id="exam-list"></div>
+      </div>
     </div>
   </div>
 
@@ -257,7 +270,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="primary-btn" onclick="saveSettings()">저장하고 연결 확인</button>
       <button class="ghost-btn" onclick="closeModal('modal-settings')">닫기</button>
       <div class="field-hint" style="text-align:center;margin-top:10px;opacity:.75">
-        화면(HTML) 버전 <b id="ver-html">M5.9.4</b> ·
+        화면(HTML) 버전 <b id="ver-html">M5.10</b> ·
         서버(Code.gs) 버전 <b id="ver-server">확인 중…</b>
       </div>
     </div>
@@ -479,6 +492,22 @@ textarea{resize:vertical;min-height:88px}
     </div>
   </div>
 
+  <!-- ===== 모달: 시험 분석 PDF 업로드 (M5.10) ===== -->
+  <div class="overlay" id="modal-exam">
+    <div class="sheet">
+      <h2>시험 분석 PDF 올리기</h2>
+      <div class="field"><label>PDF 파일</label>
+        <input type="file" id="exam-file" accept="application/pdf,.pdf" onchange="onExamFileChange()">
+        <div class="field-hint">파일명이 '이름_학교_2026_2학기_중간고사_…' 형태면 아래 제목이 자동으로 채워집니다.
+        (최대 8MB)</div>
+      </div>
+      <div class="field"><label>제목 (목록에 보이는 이름)</label>
+        <input id="exam-title" placeholder="예: 서삼중 2026 2학기 중간고사"></div>
+      <button class="primary-btn" onclick="uploadExam()">업로드</button>
+      <button class="ghost-btn" onclick="closeModal('modal-exam')">취소</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -575,6 +604,7 @@ var lastFbAnswers = [];   // M5.8: 첨삭 재생성 시 재사용할 교사 채�
 var grs = [];
 var pendingGr = null;
 var rps = [];
+var exams = [];   // M5.10: 시험 분석 PDF 목록
 var pendingRp = null;
 
 /* ================= API ================= */
@@ -793,6 +823,7 @@ async function deleteStudent(){
     + '· 독해 첨삭\n'
     + '· 문법 점수\n'
     + '· 월간 레포트\n'
+    + '· 시험 분석 PDF (휴지통으로 이동)\n'
     + '· Drive의 숙제 사진 · 성적표 스크린샷 (휴지통으로 이동)\n\n'
     + '학부모 링크도 즉시 무효가 됩니다.\n\n계속할까요?')) return;
 
@@ -808,7 +839,8 @@ async function deleteStudent(){
     if (r && r.removed) {
       msg += ' (일지 ' + r.removed.sessions + ' · 첨삭 ' + r.removed.reading_feedback
         + ' · 문법 ' + r.removed.grammar_scores + ' · 레포트 ' + r.removed.monthly_reports
-        + '건, 사진 ' + (r.removed.photos || 0) + '장 함께 삭제)';
+        + ' · 시험분석 ' + (r.removed.exam_reports || 0)
+        + '건, 파일 ' + (r.removed.photos || 0) + '개 함께 삭제)';
     }
     toast(msg, 4000);
     showList();
@@ -828,10 +860,11 @@ async function openStudent(id){
   loadFeedbacks();
   loadGrammar();
   loadReports();
+  loadExams();
 }
 
 function switchTab(name){
-  ['log','reading','grammar','report'].forEach(function(t){
+  ['log','reading','grammar','report','exam'].forEach(function(t){
     document.getElementById('tab-'+t).classList.toggle('hidden', t !== name);
   });
   document.querySelectorAll('.tab').forEach(function(el){
@@ -1192,6 +1225,105 @@ async function deleteFeedback(){
     toast('삭제되었습니다');
     pendingFb = null;
     loadFeedbacks();
+  } catch(e){ toast('오류: ' + e.message, 3500); }
+}
+
+/* ================= 시험 분석 PDF (M5.10) ================= */
+async function loadExams(){
+  try {
+    exams = await call('listExamReports', { student_id: currentStudent.student_id });
+    exams.sort(function(a,b){ return String(a.created_at) < String(b.created_at) ? 1 : -1; });
+    renderExams();
+  } catch(e){ toast('시험 분석 목록 오류: ' + e.message, 3500); }
+}
+
+function renderExams(){
+  var box = document.getElementById('exam-list');
+  if (!exams.length) {
+    box.innerHTML = '<div class="empty">아직 올린 시험 분석 PDF가 없습니다.</div>'; return;
+  }
+  box.innerHTML = exams.map(function(r){
+    return '<div class="log-card">'
+      + '<div class="log-top"><span class="rp-title">' + esc(r.title || r.file_name) + '</span>'
+      + '<span class="log-date">' + esc(String(r.created_at || '').slice(0,10)) + '</span></div>'
+      + '<div class="log-memo">' + esc(r.file_name) + '</div>'
+      + '<div class="exam-actions">'
+      +   '<a class="open" href="' + esc(r.file_url) + '" target="_blank" rel="noopener">📄 PDF 열기</a>'
+      +   '<button onclick="deleteExam(\'' + esc(r.exam_id) + '\')">삭제</button>'
+      + '</div></div>';
+  }).join('');
+}
+
+function openExamForm(){
+  document.getElementById('exam-file').value = '';
+  document.getElementById('exam-title').value = '';
+  openModal('modal-exam');
+}
+
+/** 파일을 고르면 파일명으로 제목을 자동 추정 (예: 오시윤_서삼중_2026_2학기_중간고사_영소토_분석지.pdf) */
+function examParts(fileName){
+  var base = String(fileName || '').replace(/\.pdf$/i, '');
+  var parts = base.split('_').filter(function(x){ return x; });
+  return parts;
+}
+function onExamFileChange(){
+  var f = document.getElementById('exam-file').files[0];
+  if (!f) return;
+  var parts = examParts(f.name);
+  var nm = currentStudent ? String(currentStudent.name).trim() : '';
+  if (parts.length && parts[0] === nm) parts.shift();            // 맨 앞 학생 이름 제거
+  if (parts.length && /분석지|분석|리포트/.test(parts[parts.length-1])) parts.pop();  // 맨 뒤 '분석지' 제거
+  var t = document.getElementById('exam-title');
+  if (!t.value.trim()) t.value = parts.join(' ');
+}
+
+function fileToBase64(file){
+  return new Promise(function(resolve, reject){
+    var r = new FileReader();
+    r.onload = function(){ resolve(String(r.result).split(',')[1]); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+async function uploadExam(){
+  var f = document.getElementById('exam-file').files[0];
+  if (!f) { toast('PDF 파일을 먼저 선택하세요', 2800); return; }
+  if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { toast('PDF 파일만 올릴 수 있습니다', 2800); return; }
+  if (f.size > 8 * 1024 * 1024) { toast('파일이 너무 큽니다 (8MB 이하)', 3000); return; }
+
+  // 다른 학생의 리포트를 잘못 올리는 실수 방지: 파일명 맨 앞 이름과 현재 학생 이름 비교
+  var first = examParts(f.name)[0] || '';
+  var nm = String(currentStudent.name).trim();
+  if (first && first !== nm && /^[가-힣]{2,4}$/.test(first)) {
+    if (!confirm('파일명에 [' + first + ']라고 되어 있는데,\n현재 학생은 [' + nm + ']입니다.\n\n그래도 이 학생에게 올릴까요?')) return;
+  }
+
+  var title = document.getElementById('exam-title').value.trim() || f.name.replace(/\.pdf$/i, '');
+  busy('PDF 업로드 중');
+  try {
+    var b64 = await fileToBase64(f);
+    await call('uploadExamReport', {
+      student_id: currentStudent.student_id,
+      title: title,
+      file_name: f.name,
+      pdf_base64: b64
+    });
+    closeModal('modal-exam');
+    toast('시험 분석 PDF를 올렸습니다');
+    loadExams();
+  } catch(e){ toast('오류: ' + e.message, 4000); }
+}
+
+async function deleteExam(id){
+  var r = exams.find(function(x){ return x.exam_id === id; });
+  if (!r) return;
+  if (!confirm('[' + (r.title || r.file_name) + ']을(를) 삭제할까요?\n\nDrive의 PDF는 휴지통으로 이동합니다 (30일 안에는 복구 가능).')) return;
+  busy('삭제 중');
+  try {
+    await call('deleteExamReport', { exam_id: id });
+    toast('삭제되었습니다');
+    loadExams();
   } catch(e){ toast('오류: ' + e.message, 3500); }
 }
 
