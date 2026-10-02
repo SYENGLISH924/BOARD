@@ -247,8 +247,9 @@ textarea{resize:vertical;min-height:88px}
       </div>
       <div id="tab-exam" class="hidden">
         <button class="primary-btn" onclick="openExamForm()">＋ 시험 분석 PDF 올리기</button>
-        <div class="field-hint" style="margin-top:8px">중간·기말고사 분석 리포트(PDF)를 보관하는 강사 전용 칸입니다.
-        학부모 페이지에는 노출되지 않습니다.</div>
+        <div class="field-hint" style="margin-top:8px">중간·기말고사 분석 리포트(PDF)를 올리는 칸입니다.
+        올린 직후에는 '검수 대기'이며 학부모에게 보이지 않습니다. 내용을 확인한 뒤
+        '학부모에게 공개'를 눌러야 학부모 페이지에 나타납니다.</div>
         <div style="height:16px"></div>
         <div id="exam-list"></div>
       </div>
@@ -270,7 +271,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="primary-btn" onclick="saveSettings()">저장하고 연결 확인</button>
       <button class="ghost-btn" onclick="closeModal('modal-settings')">닫기</button>
       <div class="field-hint" style="text-align:center;margin-top:10px;opacity:.75">
-        화면(HTML) 버전 <b id="ver-html">M5.10</b> ·
+        화면(HTML) 버전 <b id="ver-html">M5.11</b> ·
         서버(Code.gs) 버전 <b id="ver-server">확인 중…</b>
       </div>
     </div>
@@ -1243,15 +1244,40 @@ function renderExams(){
     box.innerHTML = '<div class="empty">아직 올린 시험 분석 PDF가 없습니다.</div>'; return;
   }
   box.innerHTML = exams.map(function(r){
+    var pub = (r.status === 'approved');   // 빈 값·draft는 모두 '검수 대기'로 취급
+    var chip = pub
+      ? '<span class="status-chip approved">학부모 공개 중</span>'
+      : '<span class="status-chip draft">검수 대기</span>';
+    var toggle = pub
+      ? '<button onclick="setExamStatus(\'' + esc(r.exam_id) + '\',\'draft\')">공개 해제</button>'
+      : '<button onclick="setExamStatus(\'' + esc(r.exam_id) + '\',\'approved\')" style="border-color:var(--gold);color:var(--gold-bright)">✓ 학부모에게 공개</button>';
     return '<div class="log-card">'
-      + '<div class="log-top"><span class="rp-title">' + esc(r.title || r.file_name) + '</span>'
+      + '<div class="log-top"><span class="rp-title">' + esc(r.title || r.file_name) + chip + '</span>'
       + '<span class="log-date">' + esc(String(r.created_at || '').slice(0,10)) + '</span></div>'
       + '<div class="log-memo">' + esc(r.file_name) + '</div>'
       + '<div class="exam-actions">'
       +   '<a class="open" href="' + esc(r.file_url) + '" target="_blank" rel="noopener">📄 PDF 열기</a>'
+      +   toggle
       +   '<button onclick="deleteExam(\'' + esc(r.exam_id) + '\')">삭제</button>'
       + '</div></div>';
   }).join('');
+}
+
+/** 학부모 공개/해제 — 선생님이 직접 눌러야만 바뀐다 (검수 게이트) */
+async function setExamStatus(id, status){
+  var r = exams.find(function(x){ return x.exam_id === id; });
+  if (!r) return;
+  if (status === 'approved') {
+    if (!confirm('[' + (r.title || r.file_name) + ']을(를) 학부모에게 공개합니다.\n\n'
+      + 'PDF 안의 점수와 선생님 코멘트를 확인하셨나요?\n'
+      + '공개하면 이 학생의 학부모 링크 화면 [시험분석] 탭에 바로 나타납니다.')) return;
+  }
+  busy(status === 'approved' ? '공개 중' : '공개 해제 중');
+  try {
+    await call('setExamStatus', { exam_id: id, status: status });
+    toast(status === 'approved' ? '학부모에게 공개했습니다' : '공개를 해제했습니다');
+    loadExams();
+  } catch(e){ toast('오류: ' + e.message, 3500); }
 }
 
 function openExamForm(){
