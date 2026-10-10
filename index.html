@@ -152,6 +152,17 @@ textarea{resize:vertical;min-height:88px}
 .ans-row input{flex:1;min-width:0;padding:11px 10px;font-size:14.5px}
 .field-hint{font-size:11.5px;color:var(--muted);margin-top:5px}
 
+.mode-switch{display:flex;gap:6px;margin-bottom:14px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.mode-switch button{flex:1;padding:10px 0;border-radius:9px;font-size:14px;color:var(--muted)}
+.mode-switch button.on{background:linear-gradient(135deg,var(--gold-bright),var(--gold));color:#1a1608;font-weight:700}
+.subtabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:14px}
+.subtab{flex:1;padding:10px 0;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent}
+.subtab.on{color:var(--gold-bright);border-bottom-color:var(--gold)}
+.type-chips{display:flex;flex-wrap:wrap;gap:6px}
+.type-chip{padding:8px 12px;border-radius:99px;border:1px solid var(--line);color:var(--muted);font-size:13.5px}
+.type-chip.on{border-color:var(--gold);color:#1a1608;font-weight:700;
+  background:linear-gradient(135deg,var(--gold-bright),var(--gold))}
+
 /* ---------- 모달 (바텀시트) ---------- */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;
   align-items:flex-end;justify-content:center;z-index:50}
@@ -227,9 +238,33 @@ textarea{resize:vertical;min-height:88px}
         <div id="log-list"></div>
       </div>
       <div id="tab-reading" class="hidden">
-        <button class="primary-btn" onclick="openFbForm()">＋ 새 첨삭 (사진 업로드)</button>
-        <div style="height:16px"></div>
-        <div id="fb-list"></div>
+        <!-- M5.12: 학생별 중등/고등 전환. 한 번에 한쪽 화면만 보이고, 이미 쌓인 기록은 전환해도 그대로 보존된다 -->
+        <div class="mode-switch">
+          <button id="rd-mode-mid" onclick="setReadingMode('mid')">중등 (사진 첨삭)</button>
+          <button id="rd-mode-high" onclick="setReadingMode('high')">고등</button>
+        </div>
+        <div id="rd-mid">
+          <button class="primary-btn" onclick="openFbForm()">＋ 새 첨삭 (사진 업로드)</button>
+          <div style="height:16px"></div>
+          <div id="fb-list"></div>
+        </div>
+        <div id="rd-high" class="hidden">
+          <div class="subtabs">
+            <button class="subtab on" id="hs-sub-score" onclick="switchHsSub('score')">문제풀이 (점수)</button>
+            <button class="subtab" id="hs-sub-fb" onclick="switchHsSub('fb')">피드백</button>
+          </div>
+          <div id="hs-score-box">
+            <button class="primary-btn" onclick="openHsForm()">＋ 문제풀이 점수 기록</button>
+            <div class="field-hint" style="margin-top:8px">문제 유형을 탭하고 점수를 입력하면 검수 화면으로 넘어갑니다.
+            승인하기 전에는 학부모 화면과 월간 레포트에 반영되지 않습니다.</div>
+            <div style="height:16px"></div>
+            <div id="hs-list"></div>
+          </div>
+          <div id="hs-fb-box" class="hidden">
+            <div class="placeholder"><b>고등 피드백</b>은 2단계에서 추가됩니다.<br>
+            (문제 유형 · 오답 유형 · 해석 틀린 문장 번호를 탭하고 답안 PDF를 올리는 방식)</div>
+          </div>
+        </div>
       </div>
       <div id="tab-grammar" class="hidden">
         <button class="primary-btn" onclick="openGrForm()">＋ 문법 기록 (스크린샷 업로드)</button>
@@ -268,10 +303,15 @@ textarea{resize:vertical;min-height:88px}
         <label>독해 첨삭 프롬프트 (AI 지시문)</label>
         <textarea id="set-prompt" rows="5" placeholder="비워두면 기본 프롬프트가 사용됩니다"></textarea>
       </div>
+      <div class="field">
+        <label>고등 독해 문제 유형 목록 (한 줄에 하나씩)</label>
+        <textarea id="set-hstypes" rows="6" placeholder="비워두면 기본 18개 유형이 사용됩니다"></textarea>
+        <div class="field-hint">여기서 고친 목록이 고등 문제풀이 화면의 탭 버튼이 됩니다. 이미 저장된 점수 기록의 유형 이름은 바뀌지 않습니다.</div>
+      </div>
       <button class="primary-btn" onclick="saveSettings()">저장하고 연결 확인</button>
       <button class="ghost-btn" onclick="closeModal('modal-settings')">닫기</button>
       <div class="field-hint" style="text-align:center;margin-top:10px;opacity:.75">
-        화면(HTML) 버전 <b id="ver-html">M5.11</b> ·
+        화면(HTML) 버전 <b id="ver-html">M5.12</b> ·
         서버(Code.gs) 버전 <b id="ver-server">확인 중…</b>
       </div>
     </div>
@@ -296,7 +336,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="ghost-btn" onclick="closeModal('modal-student')">취소</button>
       <button class="danger-btn hidden" id="sf-delete" onclick="deleteStudent()">🗑 학생 완전 삭제</button>
       <div class="field-hint hidden" id="sf-delete-hint">
-        완전 삭제는 학생 정보뿐 아니라 <b>수업일지 · 독해 첨삭 · 문법 점수 · 월간 레포트 기록과
+        완전 삭제는 학생 정보뿐 아니라 <b>수업일지 · 독해 첨삭 · 고등 독해 점수 · 문법 점수 · 월간 레포트 기록과
         Drive에 저장된 숙제 사진 · 성적표 스크린샷까지 전부</b> 지웁니다.
         학부모 링크도 즉시 끊깁니다.<br>
         기록을 남기고 목록에서만 감추려면 위 [재원 여부]를 <b>퇴원(숨김)</b>으로 바꿔 저장하세요.
@@ -395,6 +435,43 @@ textarea{resize:vertical;min-height:88px}
       <button class="primary-btn" onclick="approveFeedback()">✓ 승인하고 확정</button>
       <button class="ghost-btn" onclick="closeModal('modal-fbreview')">나중에 (초안으로 두기)</button>
       <button class="danger-btn" onclick="deleteFeedback()">이 첨삭 삭제</button>
+    </div>
+  </div>
+
+  <!-- ===== 모달: 고등 문제풀이 점수 입력 (M5.12) ===== -->
+  <div class="overlay" id="modal-hs">
+    <div class="sheet">
+      <h2>고등 독해 문제풀이 점수</h2>
+      <div class="field"><label>날짜</label><input type="date" id="hs-date"></div>
+      <div class="field"><label>문제 유형 (하나 선택)</label>
+        <div class="type-chips" id="hs-types"></div></div>
+      <div class="field"><label>점수 (0–100)</label>
+        <input id="hs-score" type="number" inputmode="numeric" min="0" max="100" placeholder="점수 입력"></div>
+      <button class="primary-btn" onclick="saveHsDraft()">저장하고 검수하기</button>
+      <button class="ghost-btn" onclick="closeModal('modal-hs')">취소</button>
+    </div>
+  </div>
+
+  <!-- ===== 모달: 고등 문제풀이 검수 (M5.12) ===== -->
+  <div class="overlay" id="modal-hsreview">
+    <div class="sheet">
+      <h2>문제풀이 점수 검수</h2>
+      <div class="review-note">내용을 확인하고 필요하면 고친 뒤 승인하세요.
+        승인한 점수만 월간 레포트의 독해 평균과 문제유형 분석에 반영됩니다.</div>
+      <div class="review-preview">
+        <div class="rp-head">
+          <span class="rp-title" id="hsr-student"></span>
+          <span class="status-chip draft" id="hsr-chip">검수 대기</span>
+        </div>
+        <div class="field"><label>날짜</label><input type="date" id="hsr-date"></div>
+        <div class="field"><label>문제 유형</label>
+          <div class="type-chips" id="hsr-types"></div></div>
+        <div class="field"><label>점수 (0–100)</label>
+          <input id="hsr-score" type="number" inputmode="numeric" min="0" max="100"></div>
+      </div>
+      <button class="primary-btn" onclick="approveHs()">✓ 승인하고 확정</button>
+      <button class="ghost-btn" onclick="closeModal('modal-hsreview')">나중에 (초안으로 두기)</button>
+      <button class="danger-btn" onclick="deleteHs()">이 기록 삭제</button>
     </div>
   </div>
 
@@ -606,6 +683,10 @@ var grs = [];
 var pendingGr = null;
 var rps = [];
 var exams = [];   // M5.10: 시험 분석 PDF 목록
+var hsList = [];  // M5.12: 고등 문제풀이 점수 목록
+var pendingHs = null;
+var HS_DEFAULT_TYPES = ['목적','심경&분위기','주장','함축의미추론','요지','주제','제목','도표','내용일치&불일치(안내문)','어법','어휘','지칭','빈칸','무관','순서','삽입','요약문','장문'];
+var hsTypes = HS_DEFAULT_TYPES.slice();
 var pendingRp = null;
 
 /* ================= API ================= */
@@ -629,6 +710,7 @@ function openModal(id){ document.getElementById(id).classList.add('show'); }
 function closeModal(id){ document.getElementById(id).classList.remove('show');
   if (id === 'modal-review' && currentStudent) loadSessions();
   if (id === 'modal-fbreview' && currentStudent) loadFeedbacks();
+  if (id === 'modal-hsreview' && currentStudent) loadHs();
   if (id === 'modal-grreview' && currentStudent) loadGrammar();
   if (id === 'modal-rpreview' && currentStudent) loadReports(); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
@@ -713,6 +795,10 @@ async function openSettings(){
       var r = await call('getSetting', { key: 'reading_prompt' });
       document.getElementById('set-prompt').value = r.value || '';
     } catch(e){}
+    try {
+      var r2 = await call('getSetting', { key: 'hs_q_types' });
+      document.getElementById('set-hstypes').value = r2.value || '';
+    } catch(e){}
     // M5.9: 서버(Code.gs) 버전을 읽어와 화면 버전과 나란히 표시
     try {
       var res = await fetch(API, { method: 'GET' });
@@ -733,6 +819,9 @@ async function saveSettings(){
     await call('ping');
     await call('saveSetting', { key: 'reading_prompt',
       value: document.getElementById('set-prompt').value.trim() });
+    await call('saveSetting', { key: 'hs_q_types',
+      value: parseTypeLines(document.getElementById('set-hstypes').value).join('\n') });
+    await loadHsTypes();
     toast('저장되었습니다'); closeModal('modal-settings'); loadList();
   }
   catch(e){ toast('연결 실패: ' + e.message, 3500); }
@@ -822,6 +911,7 @@ async function deleteStudent(){
     + '함께 삭제되는 기록:\n'
     + '· 수업일지\n'
     + '· 독해 첨삭\n'
+    + '· 고등 독해 문제풀이 점수\n'
     + '· 문법 점수\n'
     + '· 월간 레포트\n'
     + '· 시험 분석 PDF (휴지통으로 이동)\n'
@@ -841,7 +931,7 @@ async function deleteStudent(){
       msg += ' (일지 ' + r.removed.sessions + ' · 첨삭 ' + r.removed.reading_feedback
         + ' · 문법 ' + r.removed.grammar_scores + ' · 레포트 ' + r.removed.monthly_reports
         + ' · 시험분석 ' + (r.removed.exam_reports || 0)
-        + '건, 파일 ' + (r.removed.photos || 0) + '개 함께 삭제)';
+        + ' · 고등점수 ' + (r.removed.reading_hs_scores || 0) + '건, 파일 ' + (r.removed.photos || 0) + '개 함께 삭제)';
     }
     toast(msg, 4000);
     showList();
@@ -857,6 +947,9 @@ async function openStudent(id){
   document.getElementById('view-list').classList.add('hidden');
   document.getElementById('view-student').classList.remove('hidden');
   switchTab('log');
+  applyReadingMode();
+  loadHsTypes();
+  loadHs();
   loadSessions();
   loadFeedbacks();
   loadGrammar();
@@ -1226,6 +1319,167 @@ async function deleteFeedback(){
     toast('삭제되었습니다');
     pendingFb = null;
     loadFeedbacks();
+  } catch(e){ toast('오류: ' + e.message, 3500); }
+}
+
+
+/* ================= 고등 독해 · 문제풀이 점수 (M5.12) ================= */
+function parseTypeLines(txt){
+  return String(txt || '').split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+}
+async function loadHsTypes(){
+  try {
+    var r = await call('getSetting', { key: 'hs_q_types' });
+    var arr = parseTypeLines(r.value);
+    hsTypes = arr.length ? arr : HS_DEFAULT_TYPES.slice();
+  } catch(e){ hsTypes = HS_DEFAULT_TYPES.slice(); }
+}
+
+/** 학생의 독해 모드('high'면 고등, 그 외·빈 값은 중등)에 맞춰 화면 한쪽만 보여준다 */
+function applyReadingMode(){
+  var high = !!currentStudent && String(currentStudent.reading_mode) === 'high';
+  document.getElementById('rd-mode-mid').classList.toggle('on', !high);
+  document.getElementById('rd-mode-high').classList.toggle('on', high);
+  document.getElementById('rd-mid').classList.toggle('hidden', high);
+  document.getElementById('rd-high').classList.toggle('hidden', !high);
+}
+async function setReadingMode(mode){
+  if (!currentStudent) return;
+  var cur = String(currentStudent.reading_mode) === 'high' ? 'high' : 'mid';
+  if (cur === mode) return;
+  busy('전환 중');
+  try {
+    await call('setReadingMode', { student_id: currentStudent.student_id, mode: mode });
+    currentStudent.reading_mode = mode;
+    applyReadingMode();
+    toast(mode === 'high' ? '고등 독해로 전환했습니다' : '중등 독해로 전환했습니다');
+  } catch(e){ toast('오류: ' + e.message, 3500); }
+}
+function switchHsSub(name){
+  document.getElementById('hs-score-box').classList.toggle('hidden', name !== 'score');
+  document.getElementById('hs-fb-box').classList.toggle('hidden', name !== 'fb');
+  document.getElementById('hs-sub-score').classList.toggle('on', name === 'score');
+  document.getElementById('hs-sub-fb').classList.toggle('on', name === 'fb');
+}
+
+async function loadHs(){
+  try {
+    hsList = await call('listHsScores', { student_id: currentStudent.student_id });
+    hsList.sort(function(a,b){ return a.date < b.date ? 1 : -1; });
+    renderHs();
+  } catch(e){ toast('문제풀이 목록 오류: ' + e.message, 3500); }
+}
+function renderHs(){
+  var box = document.getElementById('hs-list');
+  if (!hsList.length) { box.innerHTML = '<div class="empty">아직 문제풀이 점수 기록이 없습니다.</div>'; return; }
+  box.innerHTML = hsList.map(function(r){
+    var chip = String(r.status) === 'approved'
+      ? '<span class="status-chip approved">승인됨</span>'
+      : '<span class="status-chip draft">검수 대기</span>';
+    return '<button class="log-card" onclick="openHsReview(\''+esc(r.hs_id)+'\')">'
+      + '<div class="log-top"><span class="log-date">'+esc(r.date)+chip+'</span>'
+      + '<span class="score-num">'+esc(r.hs_score)+'<small>점</small></span></div>'
+      + '<div class="log-memo">'+esc(r.q_type)+'</div></button>';
+  }).join('');
+}
+
+/** 유형 탭 버튼 만들기 (하나만 선택). 목록 밖의 옛 유형 이름도 선택 상태로 보이게 맨 뒤에 추가 */
+function buildTypeChips(containerId, selected){
+  var box = document.getElementById(containerId);
+  box.innerHTML = '';
+  var list = hsTypes.slice();
+  if (selected && list.indexOf(selected) === -1) list.push(selected);
+  list.forEach(function(t){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'type-chip' + (t === selected ? ' on' : '');
+    b.textContent = t;
+    b.dataset.t = t;
+    b.onclick = function(){
+      box.querySelectorAll('.type-chip').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+    };
+    box.appendChild(b);
+  });
+}
+function getSelectedType(containerId){
+  var on = document.getElementById(containerId).querySelector('.type-chip.on');
+  return on ? on.dataset.t : '';
+}
+
+function openHsForm(){
+  document.getElementById('hs-date').value = today();
+  document.getElementById('hs-score').value = '';
+  buildTypeChips('hs-types', '');
+  openModal('modal-hs');
+}
+/** 입력 → 초안(draft)으로 저장 → 바로 검수 화면. 승인 버튼을 누르기 전에는 어디에도 반영되지 않는다 */
+async function saveHsDraft(){
+  var qt = getSelectedType('hs-types');
+  var scoreStr = document.getElementById('hs-score').value.trim();
+  var date = document.getElementById('hs-date').value;
+  if (!date) { toast('날짜를 선택하세요'); return; }
+  if (!qt) { toast('문제 유형을 선택하세요'); return; }
+  if (scoreStr === '' || isNaN(Number(scoreStr))) { toast('점수를 입력하세요'); return; }
+  busy('저장 중');
+  try {
+    var rec = await call('saveHsScore', {
+      student_id: currentStudent.student_id, date: date, q_type: qt,
+      hs_score: Math.max(0, Math.min(100, Number(scoreStr))), status: 'draft'
+    });
+    document.getElementById('modal-hs').classList.remove('show');
+    document.getElementById('toast').style.display = 'none';
+    pendingHs = rec;
+    openHsReviewModal(rec);
+  } catch(e){ toast('오류: ' + e.message, 3500); }
+}
+function openHsReview(id){
+  var r = hsList.find(function(x){ return String(x.hs_id) === String(id); });
+  if (!r) return;
+  pendingHs = r;
+  openHsReviewModal(r);
+}
+function openHsReviewModal(r){
+  document.getElementById('hsr-student').textContent = currentStudent.name + ' · ' + currentStudent.grade;
+  var ok = String(r.status) === 'approved';
+  var chip = document.getElementById('hsr-chip');
+  chip.textContent = ok ? '승인됨' : '검수 대기';
+  chip.className = 'status-chip ' + (ok ? 'approved' : 'draft');
+  document.getElementById('hsr-date').value = r.date || today();
+  document.getElementById('hsr-score').value = (r.hs_score !== '' && r.hs_score != null) ? r.hs_score : '';
+  buildTypeChips('hsr-types', String(r.q_type || ''));
+  openModal('modal-hsreview');
+}
+async function approveHs(){
+  if (!pendingHs) return;
+  var qt = getSelectedType('hsr-types');
+  var scoreStr = document.getElementById('hsr-score').value.trim();
+  var date = document.getElementById('hsr-date').value;
+  if (!date) { toast('날짜를 선택하세요'); return; }
+  if (!qt) { toast('문제 유형을 선택하세요'); return; }
+  if (scoreStr === '' || isNaN(Number(scoreStr))) { toast('점수를 입력하세요'); return; }
+  busy('승인 처리 중');
+  try {
+    await call('saveHsScore', {
+      hs_id: pendingHs.hs_id, student_id: pendingHs.student_id, date: date, q_type: qt,
+      hs_score: Math.max(0, Math.min(100, Number(scoreStr))), status: 'approved'
+    });
+    document.getElementById('modal-hsreview').classList.remove('show');
+    toast('✓ 점수 승인 완료');
+    pendingHs = null;
+    loadHs();
+  } catch(e){ toast('오류: ' + e.message, 3500); }
+}
+async function deleteHs(){
+  if (!pendingHs) return;
+  if (!confirm('이 점수 기록을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.')) return;
+  busy('삭제 중');
+  try {
+    await call('deleteRow', { sheet: 'reading_hs_scores', idField: 'hs_id', id: pendingHs.hs_id });
+    document.getElementById('modal-hsreview').classList.remove('show');
+    toast('삭제되었습니다');
+    pendingHs = null;
+    loadHs();
   } catch(e){ toast('오류: ' + e.message, 3500); }
 }
 
