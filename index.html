@@ -333,7 +333,7 @@ textarea{resize:vertical;min-height:88px}
       <button class="primary-btn" onclick="saveSettings()">저장하고 연결 확인</button>
       <button class="ghost-btn" onclick="closeModal('modal-settings')">닫기</button>
       <div class="field-hint" style="text-align:center;margin-top:10px;opacity:.75">
-        화면(HTML) 버전 <b id="ver-html">M5.13</b> ·
+        화면(HTML) 버전 <b id="ver-html">M5.14</b> ·
         서버(Code.gs) 버전 <b id="ver-server">확인 중…</b>
       </div>
     </div>
@@ -668,6 +668,20 @@ textarea{resize:vertical;min-height:88px}
 
 <script>
 /* ================= 상태 ================= */
+/* M5.14: 링크 뒤에 #api=서버주소 가 붙어 있으면 이 브라우저에 한 번 저장하고, 주소창에서는 지움.
+   - script.google.com/macros/s/.../exec 모양일 때만 저장함 (다른 주소는 무시)
+   - 저장 버튼(프롬프트 덮어쓰기 위험)을 거치지 않고 주소만 저장함 */
+(function(){
+  try {
+    var m = (location.hash || '').match(/^#api=(.+)$/);
+    if (!m) return;
+    var u = decodeURIComponent(m[1]).trim();
+    if (/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u)) {
+      localStorage.setItem('sy_api_url', u);
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+  } catch(e) {}
+})();
 var API = localStorage.getItem('sy_api_url') || '';
 var AREAS = ['어휘','듣기','문법','독해','기타'];
 var HW_AREAS = ['독해','온-어휘','온-문장','온-문법','듣기','손팅','3800제','기타'];
